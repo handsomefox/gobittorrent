@@ -1,25 +1,9 @@
 package bencode
 
 import (
-	"encoding/json"
 	"strconv"
 	"strings"
 )
-
-// DecodeValue returns the JSON representation of the decoded value.
-func DecodeValue(encodedValue string) (string, error) {
-	decoded, _, err := decodeValue(encodedValue)
-	if err != nil {
-		return "", err
-	}
-
-	b, err := json.Marshal(decoded)
-	if err != nil {
-		return "", MarshalError{Value: decoded, Message: err}
-	}
-
-	return string(b), nil
-}
 
 func decodeValue(encodedValue string) (decoded any, rest string, err error) {
 	if len(encodedValue) < 1 {

@@ -5,20 +5,28 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"os"
 
 	"github.com/jackpal/bencode-go"
 )
 
-type TorrentFile struct {
-	Announce  string
-	CreatedBy string
-	InfoHash  string
-	Info      TorrentInfo
+type Torrent struct {
+	File             File
+	Info             Info
+	AnnounceResponse AnnounceResponse
 }
 
-type TorrentInfo struct {
+func (t *Torrent) DiscoverPeers() (AnnounceResponse, error) {
+	return discoverPeers(t)
+}
+
+type File struct {
+	Announce    string
+	CreatedBy   string
+	InfoHashSum [20]byte
+	InfoHash    string
+}
+
+type Info struct {
 	Name        string
 	Pieces      []byte
 	PieceHashes []string
@@ -26,7 +34,9 @@ type TorrentInfo struct {
 	PieceLength int64
 }
 
-func NewTorrentFile(values any) (*TorrentFile, error) {
+func newTorrentFile(values any) (*Torrent, error) {
+	torrent := new(Torrent)
+
 	valuesMap, ok := values.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w, values (%q)", ErrConvertDecoded, values)
@@ -68,67 +78,29 @@ func NewTorrentFile(values any) (*TorrentFile, error) {
 	}
 	sum := sha1.Sum(buffer.Bytes())
 
-	torrentFile := &TorrentFile{
-		Announce:  announce,
-		CreatedBy: createdBy,
-		Info: TorrentInfo{
-			Length:      length,
-			Name:        name,
-			PieceLength: pieceLength,
-			Pieces:      append(make([]byte, 0), pieces...),
-			PieceHashes: make([]string, 0),
-		},
-		InfoHash: hex.EncodeToString(sum[:]),
+	torrent.File = File{
+		Announce:    announce,
+		CreatedBy:   createdBy,
+		InfoHashSum: sum,
+		InfoHash:    hex.EncodeToString(sum[:]),
+	}
+	torrent.Info = Info{
+		Length:      length,
+		Name:        name,
+		PieceLength: pieceLength,
+		Pieces:      append(make([]byte, 0), pieces...),
+		PieceHashes: make([]string, 0),
 	}
 
 	// Encode pieces
 	start := 0
-	for i := 1; i <= len(torrentFile.Info.Pieces); i++ {
+	for i := 1; i <= len(torrent.Info.Pieces); i++ {
 		if i%20 == 0 {
-			hashBytes := torrentFile.Info.Pieces[start:i]
-			torrentFile.Info.PieceHashes = append(torrentFile.Info.PieceHashes, hex.EncodeToString(hashBytes))
+			hashBytes := torrent.Info.Pieces[start:i]
+			torrent.Info.PieceHashes = append(torrent.Info.PieceHashes, hex.EncodeToString(hashBytes))
 			start = i
 		}
 	}
 
-	return torrentFile, nil
-}
-
-func DecodeTorrentFile(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("%w %q, because: %w", ErrBencodeOpenFile, path, err)
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return "", fmt.Errorf("%w %q, because: %w", ErrBencodeReadFile, path, err)
-	}
-
-	values, _, err := decodeValue(string(data))
-	if err != nil {
-		return "", err
-	}
-
-	torrentFile, err := NewTorrentFile(values)
-	if err != nil {
-		return "", err
-	}
-
-	s := fmt.Sprintf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes:\n",
-		torrentFile.Announce,
-		torrentFile.Info.Length,
-		torrentFile.InfoHash,
-		torrentFile.Info.PieceLength,
-	)
-
-	for i, h := range torrentFile.Info.PieceHashes {
-		s += h
-		if i != len(torrentFile.Info.PieceHashes)-1 {
-			s += "\n"
-		}
-	}
-
-	return s, nil
+	return torrent, nil
 }

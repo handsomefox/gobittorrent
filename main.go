@@ -31,7 +31,7 @@ func main() {
 			fmt.Println(decoded)
 		}
 	case "peers":
-		peers, err := fmt.Println(bencode.DiscoverPeers(os.Args[2]))
+		peers, err := bencode.DiscoverPeers(os.Args[2])
 		if err != nil {
 			slog.Error(err.Error())
 		} else {
@@ -40,11 +40,22 @@ func main() {
 	case "help":
 		PrintUsage()
 	case "info":
-		decoded, err := fmt.Println(bencode.DecodeTorrentFile(os.Args[2]))
+		decoded, err := bencode.DecodeTorrentFile(os.Args[2])
 		if err != nil {
 			slog.Error(err.Error())
 		} else {
 			fmt.Println(decoded)
+		}
+	case "handshake":
+		if len(os.Args) < 3 {
+			PrintIncorrectUsage()
+			return
+		}
+		out, err := bencode.RunHandshake(os.Args[2], os.Args[3])
+		if err != nil {
+			slog.Error(err.Error())
+		} else {
+			fmt.Println(out)
 		}
 	default:
 		PrintUsage()
