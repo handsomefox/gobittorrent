@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -125,10 +125,7 @@ func (c *Client) startHandshake(peer bencode.Peer, infoHash [20]byte, peerID []b
 	if err != nil {
 		return err
 	}
-	//
-	c.conn = Connection{
-		Conn: conn,
-	}
+	c.conn = Connection{Conn: conn}
 
 	if err := c.sendHandshake(infoHash, peerID); err != nil {
 		c.log.Error("Failed to handshake", "err", err, "addr", addr)
@@ -155,12 +152,17 @@ func (c *Client) sendHandshake(infoHash [20]byte, peerID []byte) error {
 
 	c.conn.peerID = hex.EncodeToString(decoded.PeerID)
 
+	// c.handleConnection(c.conn)
+
 	return nil
 }
 
 // handleConnection is the main loop for handling the message exchange between clients.
 func (c *Client) handleConnection(conn net.Conn) {
-	var lastMessage *Command
+	var (
+		lastMessage *Command
+		buffer      = make([]byte, 4096)
+	)
 	for {
 		if lastMessage != nil {
 			if err := c.exchangeMessages(conn, lastMessage); err != nil {
@@ -168,14 +170,18 @@ func (c *Client) handleConnection(conn net.Conn) {
 			}
 		}
 
-		next, err := c.readNext(conn, 1024)
+		next, err := c.readNext(conn, buffer)
 		if err != nil {
 			c.log.Error("Error while reading the next message", "err", err)
 			lastMessage = nil
+
+			if errors.Is(err, io.EOF) {
+				return
+			}
+
 			continue
 		}
 		lastMessage = next
-		fmt.Printf("lastMessage: %v\n", lastMessage)
 	}
 }
 
@@ -197,16 +203,15 @@ func (c *Client) exchangeMessages(conn net.Conn, receivedMessage *Command) error
 }
 
 // readNext is a helper for reading the next message from the connection.
-func (c *Client) readNext(conn net.Conn, bufferSize int) (*Command, error) {
-	buffer := make([]byte, 0, bufferSize)
-
+func (c *Client) readNext(conn net.Conn, buffer []byte) (*Command, error) {
 	n, err := conn.Read(buffer)
 	if err != nil {
 		return nil, err
 	}
-
 	buffer = buffer[:n]
-	msg, err := NewCommandDecoder(bytes.NewReader(buffer)).Decode()
+
+	r := bytes.NewReader(buffer)
+	msg, err := NewCommandDecoder(r).Decode()
 	if err != nil {
 		return nil, err
 	}

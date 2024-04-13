@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -25,6 +26,31 @@ const (
 	Piece
 	Cancel
 )
+
+func (id MessageID) String() string {
+	switch id {
+	case Choke:
+		return "Choke"
+	case Unchoke:
+		return "Unchoke"
+	case Interested:
+		return "Interested"
+	case NotInterested:
+		return "NotInterested"
+	case Have:
+		return "Have"
+	case Bitfield:
+		return "Bitfield"
+	case Request:
+		return "Request"
+	case Piece:
+		return "Piece"
+	case Cancel:
+		return "Cancel"
+	default:
+		return "Undefined"
+	}
+}
 
 type (
 	Command struct {
@@ -55,6 +81,10 @@ func (cmd *Command) UnmarshalBinary(data []byte) error {
 	}
 	*cmd = *decoded
 	return nil
+}
+
+func (cmd Command) String() string {
+	return fmt.Sprintf("length=%d messageID=%s payload=%v", cmd.Length, cmd.MessageID, cmd.Payload)
 }
 
 func (enc CommandEncoder) Encode(cmd *Command) error {
