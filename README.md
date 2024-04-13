@@ -2,7 +2,7 @@
 
 This is a command-line program that can:
 
-- [x] Decode bencoded values
+- [x] Decode _and_ encode bencoded values
 - [x] Decode torrent files
 - [x] Decode announce messages
 - [x] Show the available peers
