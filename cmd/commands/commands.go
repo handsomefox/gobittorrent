@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -58,7 +59,7 @@ func Peers(path string) (string, error) {
 		return "", err
 	}
 
-	resp, err := torrent.DiscoverPeers()
+	resp, err := torrent.DiscoverPeers(context.Background())
 	if err != nil {
 		return "", err
 	}
@@ -112,7 +113,7 @@ func Handshake(path, addr string) (string, error) {
 		return "", err
 	}
 
-	resp, err := torrent.DiscoverPeers()
+	resp, err := torrent.DiscoverPeers(context.Background())
 	if err != nil {
 		return "", err
 	}

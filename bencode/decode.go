@@ -11,12 +11,7 @@ type Decoder struct {
 	data []byte
 }
 
-func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{
-		r:    r,
-		data: nil,
-	}
-}
+func NewDecoder(r io.Reader) *Decoder { return &Decoder{r: r, data: nil} }
 
 func (dec *Decoder) Decode() (any, error) {
 	data, err := io.ReadAll(dec.r)
@@ -115,7 +110,7 @@ func (dec *Decoder) decodeInteger(encodedValue string) (decoded int64, rest stri
 	encodedInteger = encodedInteger[1:]
 	encodedInteger = encodedInteger[:end-1]
 
-	integer, err := strconv.ParseInt(string(encodedInteger), 10, 32)
+	integer, err := strconv.ParseInt(encodedInteger, 10, 32)
 	if err != nil {
 		return 0, "", NewSyntaxErrorf("bencode: the provided value (%q) was encoded like an integer, but was not an integer, error: %s\n", encodedValue, err)
 	}
@@ -130,7 +125,7 @@ func (dec *Decoder) decodeString(encodedValue string) (decoded, rest string, err
 	}
 
 	lengthStr, rest := split[0], split[1]
-	length, err := strconv.ParseInt(string(lengthStr), 10, 32)
+	length, err := strconv.ParseInt(lengthStr, 10, 32)
 	if err != nil {
 		return "", "", NewSyntaxErrorf("bencode: failed to decode the length value (%q), error: %s\n", lengthStr, err)
 	}

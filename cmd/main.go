@@ -9,15 +9,13 @@ import (
 	"github.com/handsomefox/gobittorrent/cmd/commands"
 )
 
-func init() {
+func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		AddSource: true,
 		Level:     slog.LevelInfo,
 	}))
 	slog.SetDefault(log)
-}
 
-func main() {
 	if len(os.Args) < 2 {
 		fmt.Println(commands.IncorrectUsageMessageString())
 	}

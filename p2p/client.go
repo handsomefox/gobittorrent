@@ -41,16 +41,14 @@ func NewClient(peer Peer, infohash [20]byte, log *slog.Logger) (*Client, error) 
 	return c, nil
 }
 
-func (c *Client) Close() error {
-	return c.conn.Close()
-}
-
-func (c *Client) PeerID() string {
-	return c.peerID
-}
+// Listen starts a goroutine with client.handleConnection for every (right now = only one) connection.
+func (c *Client) Listen()        { go c.handleConnection(c.conn) }
+func (c *Client) Close() error   { return c.conn.Close() }
+func (c *Client) PeerID() string { return c.peerID }
 
 func (c *Client) startHandshake() error {
-	conn, err := net.Dial("tcp", c.peer.IP.String()+":"+strconv.FormatInt(int64(c.peer.Port), 10))
+	addr := c.peer.IP.String() + ":" + strconv.FormatInt(int64(c.peer.Port), 10)
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -58,6 +56,7 @@ func (c *Client) startHandshake() error {
 	c.conn = conn
 
 	if err := c.sendHandshake(); err != nil {
+		c.log.Error("Failed to handshake", "err", err, "addr", addr)
 		return err
 	}
 
@@ -65,53 +64,23 @@ func (c *Client) startHandshake() error {
 }
 
 func (c *Client) sendHandshake() error {
-	// Write:
-	// 1. length of the protocol string (BitTorrent protocol) which is 19 (1 byte)
-	_, err := c.conn.Write([]byte{19})
-	if err != nil {
-		return fmt.Errorf("%w, because: %w", ErrWriteConn, err)
-	}
-	// 2. the string BitTorrent protocol (19 bytes)
-	_, err = c.conn.Write([]byte("BitTorrent protocol"))
-	if err != nil {
-		return fmt.Errorf("%w, because: %w", ErrWriteConn, err)
-	}
-	// 3. eight reserved bytes, which are all set to zero (8 bytes)
-	_, err = c.conn.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0})
-	if err != nil {
-		return fmt.Errorf("%w, because: %w", ErrWriteConn, err)
-	}
-	// 4. sha1 infohash (20 bytes) (NOT the hexadecimal representation, which is 40 bytes long)
-	_, err = c.conn.Write(c.infohash[:])
-	if err != nil {
-		return fmt.Errorf("%w, because: %w", ErrWriteConn, err)
-	}
-	// 5. peer id (20 bytes)
-	_, err = c.conn.Write([]byte("00112233445566778899"))
-	if err != nil {
-		return fmt.Errorf("%w, because: %w", ErrWriteConn, err)
+	msg := &HandshakeMessage{
+		InfoHash: c.infohash[:],
+		PeerID:   []byte("00112233445566778899"),
 	}
 
-	// Receive the handshake
-	buffer := make([]byte, 0, 128)
-	n, err := c.conn.Read(buffer)
+	if err := NewHandshakeEncoder(c.conn).Encode(msg); err != nil {
+		return err
+	}
+
+	decoded, err := NewHandshakeDecoder(c.conn).Decode()
 	if err != nil {
 		return err
 	}
-	buffer = buffer[:n]
 
-	if len(buffer) != HandshakeMessageLength {
-		return ErrInvalidHandshakeResponse
-	}
-
-	c.peerID = hex.EncodeToString(buffer[48:])
+	c.peerID = hex.EncodeToString(decoded.PeerID)
 
 	return nil
-}
-
-// Listen starts a goroutine with client.handleConnection for every (right now = only one) connection.
-func (c *Client) Listen() {
-	go c.handleConnection(c.conn)
 }
 
 // handleConnection is the main loop for handling the message exchange between clients.
@@ -120,13 +89,13 @@ func (c *Client) handleConnection(conn net.Conn) {
 	for {
 		if lastMessage != nil {
 			if err := c.exchangeMessages(conn, lastMessage); err != nil {
-				c.log.Error("error during message exchange", "err", err)
+				c.log.Error("Error during message exchange", "err", err)
 			}
 		}
 
 		next, err := c.readNext(conn, 1024)
 		if err != nil {
-			c.log.Error("error while reading the next message", "err", err)
+			c.log.Error("Error while reading the next message", "err", err)
 			lastMessage = nil
 			continue
 		}
@@ -140,10 +109,13 @@ func (c *Client) exchangeMessages(conn net.Conn, receivedMessage *Message) error
 	switch receivedMessage.MessageID {
 	case Bitfield: // Send an Interested message
 		msg := Message{Length: 2, MessageID: Interested, Payload: []byte{}}
-		if err := NewEncoder(conn).Encode(msg); err != nil {
+		if err := NewMessageEncoder(conn).Encode(msg); err != nil {
 			return err
 		}
 	case Unchoke:
+
+	default:
+		c.log.Debug("Unexpected message type", "type", receivedMessage.MessageID)
 	}
 
 	return nil
@@ -159,7 +131,7 @@ func (c *Client) readNext(conn net.Conn, bufferSize int) (*Message, error) {
 	}
 
 	buffer = buffer[:n]
-	msg, err := NewDecoder(bytes.NewReader(buffer)).Decode()
+	msg, err := NewMessageDecoder(bytes.NewReader(buffer)).Decode()
 	if err != nil {
 		return nil, err
 	}
