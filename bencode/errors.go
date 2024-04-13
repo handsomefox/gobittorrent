@@ -6,19 +6,15 @@ import (
 )
 
 var (
-	ErrGetAnnounce              = errors.New("bencode: failed to GET the announce")
-	ErrDecodeAnnounceBody       = errors.New("bencode: failed to decode the announce body")
-	ErrParseAnnounceURL         = errors.New("bencode: failed to parse the announce url")
-	ErrParsePeer                = errors.New("bencode: failed to parse peer")
-	ErrConvertDecoded           = errors.New("bencode: failed to convert decoded values to a map")
-	ErrBencodeInfoHash          = errors.New("bencode: failed to bencode info_hash")
-	ErrBencodeOpenFile          = errors.New("bencode: failed to open the file")
-	ErrBencodeReadFile          = errors.New("bencode: failed to read the file")
-	ErrMarshal                  = errors.New("bencode: failed to marshal a value")
-	ErrUnknownValueType         = errors.New("bencode: unknown value type")
-	ErrWriteConn                = errors.New("bencode: failed to write to the connection")
-	ErrInvalidIPFormat          = errors.New("bencode: invalid IP format provided, please use <ip>:<port>")
-	ErrInvalidHandshakeResponse = errors.New("bencode: invalid handshake response")
+	ErrBencodeInfoHash    = errors.New("bencode: failed to bencode info_hash")
+	ErrBencodeOpenFile    = errors.New("bencode: failed to open the file")
+	ErrBencodeReadFile    = errors.New("bencode: failed to read the file")
+	ErrConvertDecoded     = errors.New("bencode: failed to convert decoded values to a map")
+	ErrDecodeAnnounceBody = errors.New("bencode: failed to decode the announce body")
+	ErrGetAnnounce        = errors.New("bencode: failed to GET the announce")
+	ErrMarshal            = errors.New("bencode: failed to marshal a value")
+	ErrParseAnnounceURL   = errors.New("bencode: failed to parse the announce url")
+	ErrUnknownValueType   = errors.New("bencode: unknown value type")
 )
 
 type ConvertError struct {

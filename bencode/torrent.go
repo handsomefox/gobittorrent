@@ -5,23 +5,23 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/jackpal/bencode-go"
 )
 
+// Torrent is a structure that describes the .torrent file and related actions to it.
 type Torrent struct {
 	File             File
-	Info             Info
 	AnnounceResponse AnnounceResponse
 }
 
-func (t *Torrent) DiscoverPeers() (AnnounceResponse, error) {
-	return discoverPeers(t)
-}
-
+// File is the contents of the file itself.
 type File struct {
 	Announce    string
 	CreatedBy   string
+	Info        Info
 	InfoHashSum [20]byte
 	InfoHash    string
 }
@@ -34,7 +34,67 @@ type Info struct {
 	PieceLength int64
 }
 
-func newTorrentFile(values any) (*Torrent, error) {
+func NewTorrent(r io.Reader) (*Torrent, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	decoded, err := NewDecoder(bytes.NewReader(data)).Decode()
+	if err != nil {
+		return nil, err
+	}
+
+	torrentFile, err := decodeTorrent(decoded)
+	if err != nil {
+		return nil, err
+	}
+
+	return torrentFile, err
+}
+
+func (t *Torrent) DiscoverPeers() (AnnounceResponse, error) {
+	req := AnnounceRequest{
+		Announce:   t.File.Announce,
+		InfoHash:   t.File.InfoHash,
+		PeerID:     "00112233445566778899",
+		Port:       6881,
+		Uploaded:   0,
+		Downloaded: 0,
+		Left:       t.File.Info.Length,
+		Compact:    1,
+	}
+
+	u, err := req.Encode()
+	if err != nil {
+		return AnnounceResponse{}, err
+	}
+
+	resp, err := http.Get(u)
+	if err != nil {
+		return AnnounceResponse{}, fmt.Errorf("%w %q, because: %w", ErrGetAnnounce, u, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return AnnounceResponse{}, fmt.Errorf("%w, because: %w", ErrDecodeAnnounceBody, err)
+	}
+
+	decoded, err := NewDecoder(bytes.NewReader(body)).Decode()
+	if err != nil {
+		return AnnounceResponse{}, err
+	}
+
+	announcementResponse, err := DecodeAnnounceResponse(decoded)
+	if err != nil {
+		return AnnounceResponse{}, err
+	}
+
+	return announcementResponse, nil
+}
+
+func decodeTorrent(values any) (*Torrent, error) {
 	torrent := new(Torrent)
 
 	valuesMap, ok := values.(map[string]any)
@@ -83,21 +143,21 @@ func newTorrentFile(values any) (*Torrent, error) {
 		CreatedBy:   createdBy,
 		InfoHashSum: sum,
 		InfoHash:    hex.EncodeToString(sum[:]),
-	}
-	torrent.Info = Info{
-		Length:      length,
-		Name:        name,
-		PieceLength: pieceLength,
-		Pieces:      append(make([]byte, 0), pieces...),
-		PieceHashes: make([]string, 0),
+		Info: Info{
+			Length:      length,
+			Name:        name,
+			PieceLength: pieceLength,
+			Pieces:      append(make([]byte, 0), pieces...),
+			PieceHashes: make([]string, 0),
+		},
 	}
 
 	// Encode pieces
 	start := 0
-	for i := 1; i <= len(torrent.Info.Pieces); i++ {
+	for i := 1; i <= len(torrent.File.Info.Pieces); i++ {
 		if i%20 == 0 {
-			hashBytes := torrent.Info.Pieces[start:i]
-			torrent.Info.PieceHashes = append(torrent.Info.PieceHashes, hex.EncodeToString(hashBytes))
+			hashBytes := torrent.File.Info.Pieces[start:i]
+			torrent.File.Info.PieceHashes = append(torrent.File.Info.PieceHashes, hex.EncodeToString(hashBytes))
 			start = i
 		}
 	}

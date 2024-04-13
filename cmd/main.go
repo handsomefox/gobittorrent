@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/handsomefox/gobittorrent/bencode"
+	"github.com/handsomefox/gobittorrent/cmd/commands"
 )
 
 func init() {
@@ -19,28 +19,28 @@ func init() {
 
 func main() {
 	if len(os.Args) < 2 {
-		PrintIncorrectUsage()
+		fmt.Println(commands.IncorrectUsageMessageString())
 	}
 
 	switch command := strings.ToLower(os.Args[1]); command {
 	case "decode":
-		decoded, err := bencode.DecodeValue(os.Args[2])
+		decoded, err := commands.Decode(os.Args[2])
 		if err != nil {
 			slog.Error(err.Error())
 		} else {
 			fmt.Println(decoded)
 		}
 	case "peers":
-		peers, err := bencode.DiscoverPeers(os.Args[2])
+		peers, err := commands.Peers(os.Args[2])
 		if err != nil {
 			slog.Error(err.Error())
 		} else {
 			fmt.Println(peers)
 		}
 	case "help":
-		PrintUsage()
+		fmt.Println(commands.UsageMessageString())
 	case "info":
-		decoded, err := bencode.DecodeTorrentFile(os.Args[2])
+		decoded, err := commands.Info(os.Args[2])
 		if err != nil {
 			slog.Error(err.Error())
 		} else {
@@ -48,28 +48,16 @@ func main() {
 		}
 	case "handshake":
 		if len(os.Args) < 3 {
-			PrintIncorrectUsage()
+			fmt.Println(commands.IncorrectUsageMessageString())
 			return
 		}
-		out, err := bencode.RunHandshake(os.Args[2], os.Args[3])
+		out, err := commands.Handshake(os.Args[2], os.Args[3])
 		if err != nil {
 			slog.Error(err.Error())
 		} else {
 			fmt.Println(out)
 		}
 	default:
-		PrintUsage()
+		fmt.Println(commands.UsageMessageString())
 	}
-}
-
-func PrintIncorrectUsage() {
-	fmt.Println("Incorrect usage.")
-	PrintUsage()
-}
-
-func PrintUsage() {
-	const usage = `Usage:
-	gobittorrent decode 5:hello
-	`
-	fmt.Println(usage)
 }

@@ -1,11 +1,35 @@
 package bencode
 
 import (
+	"io"
 	"strconv"
 	"strings"
 )
 
-func decodeValue(encodedValue string) (decoded any, rest string, err error) {
+type Decoder struct {
+	r    io.Reader
+	data []byte
+}
+
+func NewDecoder(r io.Reader) *Decoder {
+	return &Decoder{
+		r:    r,
+		data: nil,
+	}
+}
+
+func (dec *Decoder) Decode() (any, error) {
+	data, err := io.ReadAll(dec.r)
+	if err != nil {
+		return nil, err
+	}
+
+	decoded, _, err := dec.decode(string(data))
+
+	return decoded, err
+}
+
+func (dec *Decoder) decode(encodedValue string) (decoded any, rest string, err error) {
 	if len(encodedValue) < 1 {
 		return "", "", NewSyntaxError("bencode: length of the value is 0")
 	}
@@ -13,26 +37,26 @@ func decodeValue(encodedValue string) (decoded any, rest string, err error) {
 	switch firstCh := encodedValue[0]; firstCh {
 	// An integer looks like: 'i52e'
 	case 'i':
-		return DecodeInteger(encodedValue)
+		return dec.decodeInteger(encodedValue)
 	// A string looks like: '5:hello'
 	case '1', '2', '3', '4', '5', '6', '7', '8', '9', '0':
-		return DecodeString(encodedValue)
+		return dec.decodeString(encodedValue)
 	// A list looks like: 'l5:helloi52ee'
 	case 'l':
-		return DecodeList(encodedValue)
+		return dec.decodeList(encodedValue)
 	case 'd':
-		return DecodeDictionary(encodedValue)
+		return dec.decodeDictionary(encodedValue)
 	}
 
 	return "", "", ErrUnknownValueType
 }
 
-func DecodeDictionary(encodedValue string) (dict map[string]any, rest string, err error) {
+func (dec *Decoder) decodeDictionary(encodedValue string) (dict map[string]any, rest string, err error) {
 	// Just replace d with an l and decode the list instead, then transform into a map :)
 	encodedValue = encodedValue[1:]
 	encodedValue = "l" + encodedValue
 
-	list, rest, err := DecodeList(encodedValue)
+	list, rest, err := dec.decodeList(encodedValue)
 	if err != nil {
 		return nil, rest, err
 	}
@@ -46,7 +70,7 @@ func DecodeDictionary(encodedValue string) (dict map[string]any, rest string, er
 		keyStr, ok := key.(string)
 		if !ok {
 			return nil, "",
-				NewSyntaxErrorf("bencode: failed to decode a map key (%q), it supposed to be a string", key)
+				NewSyntaxErrorf("bencode: failed to decode a map key (%q), it supposed to be a byte slice", key)
 		}
 
 		dict[keyStr] = value
@@ -55,12 +79,12 @@ func DecodeDictionary(encodedValue string) (dict map[string]any, rest string, er
 	return dict, rest, nil
 }
 
-func DecodeList(encodedValue string) (list []any, rest string, err error) {
+func (dec *Decoder) decodeList(encodedValue string) (list []any, rest string, err error) {
 	listValues := encodedValue[1:] // remove the 'l'
 	list = make([]any, 0)
 
 	for {
-		decoded, rest, err := decodeValue(listValues)
+		decoded, rest, err := dec.decode(listValues)
 		if err != nil {
 			return nil, "", err
 		}
@@ -79,7 +103,7 @@ func DecodeList(encodedValue string) (list []any, rest string, err error) {
 	}
 }
 
-func DecodeInteger(encodedValue string) (decoded int64, rest string, err error) {
+func (dec *Decoder) decodeInteger(encodedValue string) (decoded int64, rest string, err error) {
 	encodedInteger := encodedValue
 
 	end := strings.Index(encodedInteger, "e")
@@ -91,7 +115,7 @@ func DecodeInteger(encodedValue string) (decoded int64, rest string, err error) 
 	encodedInteger = encodedInteger[1:]
 	encodedInteger = encodedInteger[:end-1]
 
-	integer, err := strconv.ParseInt(encodedInteger, 10, 32)
+	integer, err := strconv.ParseInt(string(encodedInteger), 10, 32)
 	if err != nil {
 		return 0, "", NewSyntaxErrorf("bencode: the provided value (%q) was encoded like an integer, but was not an integer, error: %s\n", encodedValue, err)
 	}
@@ -99,14 +123,14 @@ func DecodeInteger(encodedValue string) (decoded int64, rest string, err error) 
 	return integer, encodedValue[end+1:], nil
 }
 
-func DecodeString(encodedValue string) (decoded, rest string, err error) {
+func (dec *Decoder) decodeString(encodedValue string) (decoded, rest string, err error) {
 	split := strings.SplitN(encodedValue, ":", 2)
 	if len(split) < 2 {
 		return "", "", NewSyntaxErrorf("bencode: failed to find ':' while decoding value (%q)\n", encodedValue)
 	}
 
 	lengthStr, rest := split[0], split[1]
-	length, err := strconv.ParseInt(lengthStr, 10, 32)
+	length, err := strconv.ParseInt(string(lengthStr), 10, 32)
 	if err != nil {
 		return "", "", NewSyntaxErrorf("bencode: failed to decode the length value (%q), error: %s\n", lengthStr, err)
 	}

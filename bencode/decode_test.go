@@ -55,7 +55,7 @@ func TestDecodeList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotList, gotRest, err := DecodeList(tt.args.encodedValue)
+			gotList, gotRest, err := NewDecoder(nil).decodeList(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeList() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -98,7 +98,7 @@ func TestDecodeInteger(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDecoded, gotRest, err := DecodeInteger(tt.args.encodedValue)
+			gotDecoded, gotRest, err := NewDecoder(nil).decodeInteger(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeInteger() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -141,7 +141,7 @@ func TestDecodeString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDecoded, gotRest, err := DecodeString(tt.args.encodedValue)
+			gotDecoded, gotRest, err := NewDecoder(nil).decodeString(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeString() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -184,7 +184,7 @@ func TestDecodeDictionary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDict, gotRest, err := DecodeDictionary(tt.args.encodedValue)
+			gotDict, gotRest, err := NewDecoder(nil).decodeDictionary(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeDictionary() error = %v, wantErr %v", err, tt.wantErr)
 				return

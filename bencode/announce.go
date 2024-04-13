@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+
+	"github.com/handsomefox/gobittorrent/p2p"
 )
 
 type AnnounceRequest struct {
@@ -18,8 +20,8 @@ type AnnounceRequest struct {
 }
 
 type AnnounceResponse struct {
-	Peers    []Peer // The first 4 bytes are the peer's IP address and the last 2 bytes are the peer's port number.
-	Interval int64  // how often your client should make a request to the tracker
+	Peers    []p2p.Peer // The first 4 bytes are the peer's IP address and the last 2 bytes are the peer's port number.
+	Interval int64      // how often your client should make a request to the tracker
 }
 
 func (req *AnnounceRequest) Encode() (string, error) {
@@ -94,7 +96,7 @@ func DecodeAnnounceResponse(decodedValues any) (AnnounceResponse, error) {
 		}
 
 		peer := peersBytes[start:i]
-		parsedPeer, err := NewPeer(peer)
+		parsedPeer, err := p2p.NewPeer(peer)
 		if err != nil {
 			return AnnounceResponse{}, err
 		}
