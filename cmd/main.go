@@ -31,14 +31,25 @@ func main() {
 	}
 }
 
-const Usage = `Usage:
-gobittorrent decode 5:hello
-gobittorrent decode d3:foo3:bar5:helloi52ee
-gobittorrent peers sample.torrent
-gobittorrent info sample.torrent
-gobittorrent handshake sample.torrent 1.1.1.1:1111
+const Usage = `gobittorrent
 
-To display this message use:
-gobittorrent help`
+Commands:
+  decode <string>
+    decodes a bencoded string and outputs it as json
+  peers <.torrent file>
+    shows the available peers for the given .torrent file
+  info <.torrent file>
+    shows the decoded representation of the .torrent file
+  handshake <.torrent file> <peer>
+    does the handshake with the given peer, which is a string that looks like: "host:port"
+  help
+    display this message
+
+Usage:
+  gobittorrent decode 5:hello
+  gobittorrent decode d3:foo3:bar5:helloi52ee
+  gobittorrent peers sample.torrent
+  gobittorrent info sample.torrent
+  gobittorrent handshake sample.torrent 1.1.1.1:1111`
 
 const IncorrectUsage = "Incorrect usage...\n" + Usage

@@ -16,6 +16,10 @@ build: lint vet
 	go build -ldflags "-s -w" -o ./bin/gobittorrent cmd/main.go
 .PHONY:build
 
+help: build
+	./bin/gobittorrent help
+.PHONY:help
+
 decode: build
 	./bin/gobittorrent decode d3:foo3:bar5:helloi52ee
 .PHONY:decode
