@@ -12,7 +12,11 @@ vet: fmt
 	go vet ./...
 .PHONY:vet
 
-build: lint vet
+test: vet
+	go test -v ./...
+.PHONY: test
+
+build: lint test
 	go build -ldflags "-s -w" -o ./bin/gobittorrent cmd/main.go
 .PHONY:build
 
