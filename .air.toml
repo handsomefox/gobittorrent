@@ -1,0 +1,10 @@
+testdata_dir = "bencode/testdata"
+
+[build]
+args_bin = ["handshake", "sample.torrent", "178.62.82.89:51448"]
+bin = "./bin/gobittorrent"
+cmd = "make build"
+exclude_dir = ["bin", ".tmp", "vendor", "bencode/testdata"]
+
+[log]
+time = true
