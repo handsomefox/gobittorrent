@@ -15,47 +15,30 @@ func main() {
 		Level:     slog.LevelInfo,
 	}))
 	slog.SetDefault(log)
-
-	if len(os.Args) < 2 {
-		fmt.Println(commands.IncorrectUsageMessageString())
-	}
-
 	switch command := strings.ToLower(os.Args[1]); command {
 	case "decode":
-		decoded, err := commands.Decode(os.Args[2])
-		if err != nil {
-			slog.Error(err.Error())
-		} else {
-			fmt.Println(decoded)
-		}
+		commands.RunCommand(commands.Decode)
 	case "peers":
-		peers, err := commands.Peers(os.Args[2])
-		if err != nil {
-			slog.Error(err.Error())
-		} else {
-			fmt.Println(peers)
-		}
+		commands.RunCommand(commands.Peers)
 	case "help":
-		fmt.Println(commands.UsageMessageString())
+		fmt.Println(Usage)
 	case "info":
-		decoded, err := commands.Info(os.Args[2])
-		if err != nil {
-			slog.Error(err.Error())
-		} else {
-			fmt.Println(decoded)
-		}
+		commands.RunCommand(commands.Info)
 	case "handshake":
-		if len(os.Args) < 3 {
-			fmt.Println(commands.IncorrectUsageMessageString())
-			return
-		}
-		out, err := commands.Handshake(os.Args[2], os.Args[3])
-		if err != nil {
-			slog.Error(err.Error())
-		} else {
-			fmt.Println(out)
-		}
+		commands.RunCommand2(commands.Handshake)
 	default:
-		fmt.Println(commands.UsageMessageString())
+		fmt.Println(IncorrectUsage)
 	}
 }
+
+const Usage = `Usage:
+gobittorrent decode 5:hello
+gobittorrent decode d3:foo3:bar5:helloi52ee
+gobittorrent peers sample.torrent
+gobittorrent info sample.torrent
+gobittorrent handshake sample.torrent 1.1.1.1:1111
+
+To display this message use:
+gobittorrent help`
+
+const IncorrectUsage = "Incorrect usage...\n" + Usage

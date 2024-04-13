@@ -13,23 +13,37 @@ import (
 	"github.com/handsomefox/gobittorrent/p2p"
 )
 
-func IncorrectUsageMessageString() string {
-	message := "Incorrect usage..."
-	message += UsageMessageString()
-	return message
+type (
+	CommandFunc  func(string) (string, error)
+	CommandFunc2 func(string, string) (string, error)
+)
+
+func RunCommand(f CommandFunc) {
+	if len(os.Args) < 2 {
+		slog.Error("Invalid argument count", "want", 2, "got", len(os.Args))
+		return
+	}
+
+	r, err := f(os.Args[2])
+	if err != nil {
+		slog.Error("Failed to run the command", "err", err)
+	} else {
+		fmt.Println(r)
+	}
 }
 
-func UsageMessageString() string {
-	const usage = `Usage:
-	gobittorrent decode 5:hello
-	gobittorrent decode d3:foo3:bar5:helloi52ee
-	gobittorrent peers sample.torrent
-	gobittorrent info sample.torrent
-	gobittorrent handshake sample.torrent 1.1.1.1:1111
+func RunCommand2(f CommandFunc2) {
+	if len(os.Args) < 3 {
+		slog.Error("Invalid argument count", "want", 3, "got", len(os.Args))
+		return
+	}
 
-To display this message use:
-	gobittorrent help`
-	return usage
+	r, err := f(os.Args[2], os.Args[3])
+	if err != nil {
+		slog.Error("Failed to run the command", "err", err)
+	} else {
+		fmt.Println(r)
+	}
 }
 
 // Decode returns the JSON representation of the decoded value.
