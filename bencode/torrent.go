@@ -2,20 +2,17 @@ package bencode
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/jackpal/bencode-go"
 )
 
 // Torrent is a structure that describes the .torrent file and related actions to it.
 type Torrent struct {
-	AnnounceResponse AnnounceResponse
-	File             File
+	File File
 }
 
 // File is the contents of the file itself.
@@ -52,52 +49,6 @@ func NewTorrent(r io.Reader) (*Torrent, error) {
 	}
 
 	return torrentFile, err
-}
-
-func (t *Torrent) DiscoverPeers(ctx context.Context) (AnnounceResponse, error) {
-	announceReq := AnnounceRequest{
-		Announce:   t.File.Announce,
-		InfoHash:   t.File.InfoHash,
-		PeerID:     "00112233445566778899",
-		Port:       6881,
-		Uploaded:   0,
-		Downloaded: 0,
-		Left:       t.File.Info.Length,
-		Compact:    1,
-	}
-
-	u, err := announceReq.Encode()
-	if err != nil {
-		return AnnounceResponse{}, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
-	if err != nil {
-		return AnnounceResponse{}, fmt.Errorf("%w %q, because: %w", ErrGetAnnounce, u, err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return AnnounceResponse{}, fmt.Errorf("%w %q, because: %w", ErrGetAnnounce, u, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return AnnounceResponse{}, fmt.Errorf("%w, because: %w", ErrDecodeAnnounceBody, err)
-	}
-
-	decoded, err := NewDecoder(bytes.NewReader(body)).Decode()
-	if err != nil {
-		return AnnounceResponse{}, err
-	}
-
-	announcementResponse, err := DecodeAnnounceResponse(decoded)
-	if err != nil {
-		return AnnounceResponse{}, err
-	}
-
-	return announcementResponse, nil
 }
 
 func decodeTorrent(values any) (*Torrent, error) {

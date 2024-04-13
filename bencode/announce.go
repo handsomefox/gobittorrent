@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
-
-	"github.com/handsomefox/gobittorrent/p2p"
 )
 
-type AnnounceRequest struct {
+type AnnounceMessage struct {
 	Announce   string
 	InfoHash   string // the info hash of the torrent
 	PeerID     string // a unique identifier for the client
@@ -19,12 +17,7 @@ type AnnounceRequest struct {
 	Compact    int64  // 1 - whether the peer list should use the compact representation
 }
 
-type AnnounceResponse struct {
-	Peers    []p2p.Peer // The first 4 bytes are the peer's IP address and the last 2 bytes are the peer's port number.
-	Interval int64      // how often your client should make a request to the tracker
-}
-
-func (req *AnnounceRequest) Encode() (string, error) {
+func (req *AnnounceMessage) URL() (string, error) {
 	u, err := url.Parse(req.Announce)
 	if err != nil {
 		return "", fmt.Errorf("%w %q, because %w", ErrParseAnnounceURL, req.Announce, err)
@@ -68,25 +61,28 @@ func (req *AnnounceRequest) Encode() (string, error) {
 	return u.String() + "&info_hash=" + encodedHash, nil
 }
 
-func DecodeAnnounceResponse(decodedValues any) (AnnounceResponse, error) {
-	var resp AnnounceResponse
+type AnnounceResponse struct {
+	Peers    []Peer // []String - Host:Port (When decoding: the first 4 bytes are the peer's IP address and the last 2 bytes are the peer's port number)
+	Interval int64  // how often your client should make a request to the tracker
+}
 
+func (r *AnnounceResponse) Unmarshal(decodedValues any) error {
 	decodedMap, ok := decodedValues.(map[string]any)
 	if !ok {
-		return AnnounceResponse{}, fmt.Errorf("%w, values (%q)", ErrConvertDecoded, decodedValues)
+		return fmt.Errorf("%w, values (%q)", ErrConvertDecoded, decodedValues)
 	}
 
 	interval, ok := decodedMap["interval"].(int64)
 	if !ok {
-		return AnnounceResponse{}, ConvertError{ValueName: "interval", WantedType: "int64"}
+		return ConvertError{ValueName: "interval", WantedType: "int64"}
 	}
 
 	peers, ok := decodedMap["peers"].(string)
 	if !ok {
-		return AnnounceResponse{}, ConvertError{ValueName: "peers", WantedType: "string"}
+		return ConvertError{ValueName: "peers", WantedType: "string"}
 	}
 
-	resp.Interval = interval
+	r.Interval = interval
 
 	start := 0
 	peersBytes := []byte(peers)
@@ -95,14 +91,13 @@ func DecodeAnnounceResponse(decodedValues any) (AnnounceResponse, error) {
 			continue
 		}
 
-		peer := peersBytes[start:i]
-		parsedPeer, err := p2p.NewPeer(peer)
+		p, err := NewPeer(peersBytes[start:i])
 		if err != nil {
-			return AnnounceResponse{}, err
+			return err
 		}
-		resp.Peers = append(resp.Peers, parsedPeer)
+		r.Peers = append(r.Peers, p)
 		start = i
 	}
 
-	return resp, nil
+	return nil
 }

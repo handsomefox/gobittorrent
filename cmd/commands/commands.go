@@ -3,10 +3,10 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/handsomefox/gobittorrent/bencode"
@@ -73,14 +73,20 @@ func Peers(path string) (string, error) {
 		return "", err
 	}
 
-	resp, err := torrent.DiscoverPeers(context.Background())
+	client, err := p2p.NewClient(slog.Default(), []byte("00112233445566778899"), torrent)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	peers, err := client.DiscoverPeers(context.Background())
 	if err != nil {
 		return "", err
 	}
 
 	output := ""
-	for _, peer := range resp.Peers {
-		output += peer.IP.String() + ":" + strconv.FormatInt(int64(peer.Port), 10) + "\n"
+	for _, peer := range peers {
+		output += peer.Addr() + "\n"
 	}
 
 	return output, nil
@@ -115,6 +121,8 @@ func Info(path string) (string, error) {
 	return s, nil
 }
 
+var ErrPeerNotFound = errors.New("commands: peer not found")
+
 func Handshake(path, addr string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -127,27 +135,27 @@ func Handshake(path, addr string) (string, error) {
 		return "", err
 	}
 
-	resp, err := torrent.DiscoverPeers(context.Background())
+	client, err := p2p.NewClient(slog.Default(), []byte("00112233445566778899"), torrent)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	peers, err := client.DiscoverPeers(context.Background())
 	if err != nil {
 		return "", err
 	}
 
-	var peer p2p.Peer
-	for _, p := range resp.Peers {
+	var peer bencode.Peer
+	for _, p := range peers {
 		if p.Addr() == addr {
 			peer = p
 		}
 	}
 
 	if peer.Empty() {
-		return "", fmt.Errorf("failed to find the correct peer")
+		return "", ErrPeerNotFound
 	}
-
-	client, err := p2p.NewClient(peer, torrent.File.InfoHashSum, slog.Default())
-	if err != nil {
-		return "", err
-	}
-	defer client.Close()
 
 	return "Peer ID: " + client.PeerID(), nil
 }

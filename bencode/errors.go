@@ -14,6 +14,7 @@ var (
 	ErrGetAnnounce        = errors.New("bencode: failed to GET the announce")
 	ErrMarshal            = errors.New("bencode: failed to marshal a value")
 	ErrParseAnnounceURL   = errors.New("bencode: failed to parse the announce url")
+	ErrParsePeer          = errors.New("bencode: failed to parse peer")
 	ErrUnknownValueType   = errors.New("bencode: unknown value type")
 )
 
