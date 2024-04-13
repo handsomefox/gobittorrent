@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strconv"
 )
 
 const HandshakeMessageLength = 68
@@ -47,7 +46,7 @@ func (c *Client) Close() error   { return c.conn.Close() }
 func (c *Client) PeerID() string { return c.peerID }
 
 func (c *Client) startHandshake() error {
-	addr := c.peer.IP.String() + ":" + strconv.FormatInt(int64(c.peer.Port), 10)
+	addr := c.peer.Addr()
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return err
