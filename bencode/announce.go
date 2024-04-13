@@ -7,18 +7,18 @@ import (
 )
 
 type AnnounceMessage struct {
-	Announce   string
-	InfoHash   string // the info hash of the torrent
-	PeerID     string // a unique identifier for the client
-	Port       int64  // 6881 - the port client is listening on
-	Uploaded   int64  // 0 - the total amount uploaded so far
-	Downloaded int64  // 0 - the total amount downloaded so far
-	Left       int64  // the number of bytes left to download
-	Compact    int64  // 1 - whether the peer list should use the compact representation
+	Announce   String
+	InfoHash   String  // the info hash of the torrent
+	PeerID     String  // a unique identifier for the client
+	Port       Integer // 6881 - the port client is listening on
+	Uploaded   Integer // 0 - the total amount uploaded so far
+	Downloaded Integer // 0 - the total amount downloaded so far
+	Left       Integer // the number of bytes left to download
+	Compact    Integer // 1 - whether the peer list should use the compact representation
 }
 
 func (req *AnnounceMessage) URL() (string, error) {
-	u, err := url.Parse(req.Announce)
+	u, err := url.Parse(string(req.Announce))
 	if err != nil {
 		return "", fmt.Errorf("%w %q, because %w", ErrParseAnnounceURL, req.Announce, err)
 	}
@@ -50,36 +50,36 @@ func (req *AnnounceMessage) URL() (string, error) {
 	}
 
 	q := u.Query()
-	q.Set("peer_id", req.PeerID)
-	q.Set("port", strconv.FormatInt(req.Port, 10))
-	q.Set("uploaded", strconv.FormatInt(req.Uploaded, 10))
-	q.Set("downloaded", strconv.FormatInt(req.Downloaded, 10))
-	q.Set("left", strconv.FormatInt(req.Left, 10))
-	q.Set("compact", strconv.FormatInt(req.Compact, 10))
+	q.Set("peer_id", string(req.PeerID))
+	q.Set("port", strconv.FormatInt(int64(req.Port), 10))
+	q.Set("uploaded", strconv.FormatInt(int64(req.Uploaded), 10))
+	q.Set("downloaded", strconv.FormatInt(int64(req.Downloaded), 10))
+	q.Set("left", strconv.FormatInt(int64(req.Left), 10))
+	q.Set("compact", strconv.FormatInt(int64(req.Compact), 10))
 	u.RawQuery = q.Encode()
 
 	return u.String() + "&info_hash=" + encodedHash, nil
 }
 
 type AnnounceResponse struct {
-	Peers    []Peer // []String - Host:Port (When decoding: the first 4 bytes are the peer's IP address and the last 2 bytes are the peer's port number)
-	Interval int64  // how often your client should make a request to the tracker
+	Peers    []Peer  // []String - Host:Port (When decoding: the first 4 bytes are the peer's IP address and the last 2 bytes are the peer's port number)
+	Interval Integer // how often your client should make a request to the tracker
 }
 
 func (r *AnnounceResponse) Unmarshal(decodedValues any) error {
-	decodedMap, ok := decodedValues.(map[string]any)
+	decodedMap, ok := decodedValues.(Dictionary)
 	if !ok {
 		return fmt.Errorf("%w, values (%q)", ErrConvertDecoded, decodedValues)
 	}
 
-	interval, ok := decodedMap["interval"].(int64)
+	interval, ok := decodedMap["interval"].(Integer)
 	if !ok {
-		return ConvertError{ValueName: "interval", WantedType: "int64"}
+		return ConvertError{ValueName: "interval", WantedType: "Integer"}
 	}
 
-	peers, ok := decodedMap["peers"].(string)
+	peers, ok := decodedMap["peers"].(String)
 	if !ok {
-		return ConvertError{ValueName: "peers", WantedType: "string"}
+		return ConvertError{ValueName: "peers", WantedType: "String"}
 	}
 
 	r.Interval = interval

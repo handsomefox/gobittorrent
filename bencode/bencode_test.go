@@ -12,31 +12,31 @@ func TestDecodeList(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     args
-		wantList []any
+		wantList List
 		wantRest string
 		wantErr  bool
 	}{
 		{
 			name:     "Decode l2:hee",
 			args:     args{encodedValue: "l2:hee"},
-			wantList: []any{"he"},
+			wantList: List{String("he")},
 			wantRest: "",
 			wantErr:  false,
 		},
 		{
 			name:     "Decode l2:hee123123",
 			args:     args{encodedValue: "l2:hee123123"},
-			wantList: []any{"he"},
+			wantList: List{String("he")},
 			wantRest: "123123",
 			wantErr:  false,
 		},
 		{
 			name: "Decode nested l5:helloi52el2:hhee",
 			args: args{encodedValue: "l5:helloi52el2:hhee"},
-			wantList: []any{
-				"hello",
-				int64(52),
-				[]any{"hh"},
+			wantList: List{
+				String("hello"),
+				Integer(52),
+				List{String("hh")},
 			},
 			wantRest: "",
 			wantErr:  false,
@@ -44,10 +44,10 @@ func TestDecodeList(t *testing.T) {
 		{
 			name: "Decode nested l5:helloi52el2:hhee123123",
 			args: args{encodedValue: "l5:helloi52el2:hhee123123"},
-			wantList: []any{
-				"hello",
-				int64(52),
-				[]any{"hh"},
+			wantList: List{
+				String("hello"),
+				Integer(52),
+				List{String("hh")},
 			},
 			wantRest: "123123",
 			wantErr:  false,
@@ -55,7 +55,7 @@ func TestDecodeList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotList, gotRest, err := NewDecoder(nil).decodeList(tt.args.encodedValue)
+			gotList, gotRest, err := DecodeList(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeList() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -77,28 +77,28 @@ func TestDecodeInteger(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        args
-		wantDecoded int64
+		wantDecoded Integer
 		wantRest    string
 		wantErr     bool
 	}{
 		{
 			name:        "Decode 52",
 			args:        args{encodedValue: "i52e"},
-			wantDecoded: int64(52),
+			wantDecoded: Integer(52),
 			wantRest:    "",
 			wantErr:     false,
 		},
 		{
 			name:        "Decode 52 with the rest",
 			args:        args{encodedValue: "i52e123123"},
-			wantDecoded: int64(52),
+			wantDecoded: Integer(52),
 			wantRest:    "123123",
 			wantErr:     false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDecoded, gotRest, err := NewDecoder(nil).decodeInteger(tt.args.encodedValue)
+			gotDecoded, gotRest, err := DecodeInteger(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeInteger() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -120,28 +120,28 @@ func TestDecodeString(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        args
-		wantDecoded string
+		wantDecoded String
 		wantRest    string
 		wantErr     bool
 	}{
 		{
 			name:        "Decode 5:hello",
 			args:        args{encodedValue: "5:hello"},
-			wantDecoded: "hello",
+			wantDecoded: String("hello"),
 			wantRest:    "",
 			wantErr:     false,
 		},
 		{
 			name:        "Decode 5:hello123123",
 			args:        args{encodedValue: "5:hello123123"},
-			wantDecoded: "hello",
+			wantDecoded: String("hello"),
 			wantRest:    "123123",
 			wantErr:     false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDecoded, gotRest, err := NewDecoder(nil).decodeString(tt.args.encodedValue)
+			gotDecoded, gotRest, err := DecodeString(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeString() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -163,28 +163,28 @@ func TestDecodeDictionary(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     args
-		wantDict map[string]any
+		wantDict Dictionary
 		wantRest string
 		wantErr  bool
 	}{
 		{
 			name:     "Decode d3:foo3:bar5:helloi52ee",
 			args:     args{encodedValue: "d3:foo3:bar5:helloi52ee"},
-			wantDict: map[string]any{"foo": "bar", "hello": int64(52)},
+			wantDict: Dictionary{String("foo"): String("bar"), String("hello"): Integer(52)},
 			wantRest: "",
 			wantErr:  false,
 		},
 		{
 			name:     "Decode d3:foo3:bar5:helloi52ee123",
 			args:     args{encodedValue: "d3:foo3:bar5:helloi52ee123"},
-			wantDict: map[string]any{"foo": "bar", "hello": int64(52)},
+			wantDict: Dictionary{String("foo"): String("bar"), String("hello"): Integer(52)},
 			wantRest: "123",
 			wantErr:  false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDict, gotRest, err := NewDecoder(nil).decodeDictionary(tt.args.encodedValue)
+			gotDict, gotRest, err := DecodeDictionary(tt.args.encodedValue)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeDictionary() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -194,6 +194,106 @@ func TestDecodeDictionary(t *testing.T) {
 			}
 			if gotRest != tt.wantRest {
 				t.Errorf("DecodeDictionary() gotRest = %v, want %v", gotRest, tt.wantRest)
+			}
+		})
+	}
+}
+
+func TestInteger_Encode(t *testing.T) {
+	tests := []struct {
+		name    string
+		i       Integer
+		want    string
+		wantErr bool
+	}{
+		{name: "Encode 52", i: Integer(52), want: "i52e", wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.i.Encode()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Integer.Encode() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Integer.Encode() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestString_Encode(t *testing.T) {
+	tests := []struct {
+		name    string
+		str     String
+		want    string
+		wantErr bool
+	}{
+		{name: "Encode hello", str: "hello", want: "5:hello", wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.str.Encode()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("String.Encode() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("String.Encode() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestList_Encode(t *testing.T) {
+	tests := []struct {
+		name    string
+		list    List
+		want    string
+		wantErr bool
+	}{
+		{name: "Encode l5:helloe", list: []Bencodable{String("hello")}, want: "l5:helloe", wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.list.Encode()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("List.Encode() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("List.Encode() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDictionary_Encode(t *testing.T) {
+	tests := []struct {
+		name    string
+		dict    Dictionary
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "Encode d3:foo3:bar2:hi5:helloe",
+			dict: Dictionary{
+				"foo": String("bar"),
+				"hi":  String("hello"),
+			},
+			want:    "d3:foo3:bar2:hi5:helloe",
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.dict.Encode()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Dictionary.Encode() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Dictionary.Encode() = %v, want %v", got, tt.want)
 			}
 		})
 	}

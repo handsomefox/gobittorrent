@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -107,7 +108,7 @@ func Info(path string) (string, error) {
 	s := fmt.Sprintf("Tracker URL: %s\nLength: %d\nInfo Hash: %s\nPiece Length: %d\nPiece Hashes:\n",
 		torrent.File.Announce,
 		torrent.File.Info.Length,
-		torrent.File.InfoHash,
+		hex.EncodeToString(torrent.File.InfoHashSum[:]),
 		torrent.File.Info.PieceLength,
 	)
 

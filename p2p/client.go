@@ -67,7 +67,7 @@ func (c *Client) PeerID() string { return c.conn.PeerID() }
 func (c *Client) Announce(ctx context.Context) (*bencode.AnnounceResponse, error) {
 	announceReq := bencode.AnnounceMessage{
 		Announce:   c.t.File.Announce,
-		InfoHash:   c.t.File.InfoHash,
+		InfoHash:   bencode.String(hex.EncodeToString(c.t.File.InfoHashSum[:])),
 		PeerID:     "00112233445566778899",
 		Port:       6881,
 		Uploaded:   0,

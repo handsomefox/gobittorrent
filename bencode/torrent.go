@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-
-	"github.com/jackpal/bencode-go"
 )
 
 // Torrent is a structure that describes the .torrent file and related actions to it.
@@ -17,19 +15,18 @@ type Torrent struct {
 
 // File is the contents of the file itself.
 type File struct {
-	Announce    string
-	CreatedBy   string
-	InfoHash    string
+	Announce    String
+	CreatedBy   String
 	Info        Info
 	InfoHashSum [20]byte
 }
 
 type Info struct {
-	Name        string
+	Name        String
 	Pieces      []byte
 	PieceHashes []string
-	Length      int64
-	PieceLength int64
+	Length      Integer
+	PieceLength Integer
 }
 
 func NewTorrent(r io.Reader) (*Torrent, error) {
@@ -54,52 +51,50 @@ func NewTorrent(r io.Reader) (*Torrent, error) {
 func decodeTorrent(values any) (*Torrent, error) {
 	torrent := new(Torrent)
 
-	valuesMap, ok := values.(map[string]any)
+	valuesMap, ok := values.(Dictionary)
 	if !ok {
 		return nil, fmt.Errorf("%w, values (%q)", ErrConvertDecoded, values)
 	}
-	infoMap, ok := valuesMap["info"].(map[string]any)
+	infoMap, ok := valuesMap["info"].(Dictionary)
 	if !ok {
 		return nil, fmt.Errorf("%w, values (%q)", ErrConvertDecoded, valuesMap)
 	}
-	announce, ok := valuesMap["announce"].(string)
+	announce, ok := valuesMap["announce"].(String)
 	if !ok {
-		return nil, ConvertError{ValueName: "announce", WantedType: "string"}
+		return nil, ConvertError{ValueName: "announce", WantedType: "String"}
 	}
-	createdBy, ok := valuesMap["created by"].(string)
+	createdBy, ok := valuesMap["created by"].(String)
 	if !ok {
-		return nil, ConvertError{ValueName: "created by", WantedType: "string"}
+		return nil, ConvertError{ValueName: "created by", WantedType: "String"}
 	}
-	length, ok := infoMap["length"].(int64)
+	length, ok := infoMap["length"].(Integer)
 	if !ok {
-		return nil, ConvertError{ValueName: "length", WantedType: "int64"}
+		return nil, ConvertError{ValueName: "length", WantedType: "Integer"}
 	}
-	name, ok := infoMap["name"].(string)
+	name, ok := infoMap["name"].(String)
 	if !ok {
-		return nil, ConvertError{ValueName: "name", WantedType: "string"}
+		return nil, ConvertError{ValueName: "name", WantedType: "String"}
 	}
-	pieceLength, ok := infoMap["piece length"].(int64)
+	pieceLength, ok := infoMap["piece length"].(Integer)
 	if !ok {
-		return nil, ConvertError{ValueName: "piece length", WantedType: "int64"}
+		return nil, ConvertError{ValueName: "piece length", WantedType: "Integer"}
 	}
-	pieces, ok := infoMap["pieces"].(string)
+	pieces, ok := infoMap["pieces"].(String)
 	if !ok {
-		return nil, ConvertError{ValueName: "pieces", WantedType: "string"}
+		return nil, ConvertError{ValueName: "pieces", WantedType: "String"}
 	}
 
-	// Marshal the info dictionary to get it's hash
-	buffer := new(bytes.Buffer)
-	// Using the library only for marshalling to get the info hash as i dont want to implement the whole marshalling process here
-	if err := bencode.Marshal(buffer, infoMap); err != nil {
+	encoded, err := infoMap.Encode()
+	if err != nil {
 		return nil, fmt.Errorf("%w, because: %w", ErrBencodeInfoHash, err)
 	}
-	sum := sha1.Sum(buffer.Bytes())
+
+	sum := sha1.Sum([]byte(encoded))
 
 	torrent.File = File{
 		Announce:    announce,
 		CreatedBy:   createdBy,
 		InfoHashSum: sum,
-		InfoHash:    hex.EncodeToString(sum[:]),
 		Info: Info{
 			Length:      length,
 			Name:        name,
