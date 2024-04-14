@@ -3,6 +3,7 @@ package p2p
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -10,7 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,10 +20,20 @@ import (
 )
 
 const (
+	ChunkSize = 16 * 1024
+
 	HandshakeMessageLength               = 68
-	ReadDeadline           time.Duration = time.Second * 2
-	WriteDeadline          time.Duration = time.Second * 2
+	ReadDeadline           time.Duration = time.Second * 3
+	WriteDeadline          time.Duration = time.Second * 3
 )
+
+type Piece struct {
+	Hash           string
+	Chunks         []int
+	TotalSize      int
+	DownloadedSize int
+	Index          uint32
+}
 
 type Connection struct {
 	net.Conn
@@ -39,28 +50,37 @@ func (c *Connection) Addr() string {
 	return c.peer.Addr()
 }
 
-// Client is the structure for receiving and sending messages between bittorrent clients.
+// Client is the structure for receiving and sending commands between bittorrent clients.
 type Client struct {
 	log    *slog.Logger
 	t      *bencode.Torrent
 	quitch chan struct{}
 	peerID []byte
 
-	connections      map[string]*Connection
-	connectionsCount atomic.Int64
-	mu               sync.RWMutex
+	pieceQueue chan *Piece
+
+	conns      map[string]*Connection // Addr - Conn
+	connsMu    sync.RWMutex
+	connsCount atomic.Int64
+
+	pieces          map[string][]byte // Hash - Data
+	piecesMu        sync.RWMutex
+	piecesCompleted atomic.Int64
 }
 
 // NewClient returns a new client that immediately tries to initiate a handshake with the peer.
 func NewClient(log *slog.Logger, peerID []byte, torrent *bencode.Torrent) (*Client, error) {
 	c := &Client{
-		log:              log,
-		t:                torrent,
-		peerID:           peerID,
-		connectionsCount: atomic.Int64{},
-		connections:      map[string]*Connection{},
-		mu:               sync.RWMutex{},
-		quitch:           make(chan struct{}),
+		log:        log,
+		t:          torrent,
+		quitch:     make(chan struct{}),
+		peerID:     peerID,
+		pieceQueue: make(chan *Piece, len(torrent.File.Info.Pieces)),
+		conns:      make(map[string]*Connection),
+		connsCount: atomic.Int64{},
+		connsMu:    sync.RWMutex{},
+		pieces:     make(map[string][]byte),
+		piecesMu:   sync.RWMutex{},
 	}
 
 	announce, err := c.Announce(context.TODO())
@@ -79,15 +99,54 @@ func NewClient(log *slog.Logger, peerID []byte, torrent *bencode.Torrent) (*Clie
 	return c, nil
 }
 
+// Download starts the download and blocks until the download finished or errors out.
+func (c *Client) Download(w io.Writer) error {
+	pieces := c.Pieces()
+
+	go func() {
+		for _, p := range pieces {
+			p := p
+			c.pieceQueue <- &p
+		}
+	}()
+
+	for c.piecesCompleted.Load() != int64(len(pieces)) {
+		runtime.Gosched()
+	}
+
+	c.piecesMu.Lock()
+	defer c.piecesMu.Unlock()
+
+	for _, hash := range c.t.File.Info.PieceHashes {
+		piece, ok := c.pieces[hash]
+		if !ok {
+			return ErrPieceNotFound
+		}
+
+		sumBytes := sha1.Sum(piece)
+		sumHex := hex.EncodeToString(sumBytes[:])
+
+		if sumHex != hash {
+			return ErrInvalidPieceHash
+		}
+
+		if _, err := w.Write(piece); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Connections returns all the current connections as a slice.
 func (c *Client) Connections() []*Connection {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.connsMu.RLock()
+	defer c.connsMu.RUnlock()
 
 	slog.Debug("adding connections")
 
 	conns := make([]*Connection, 0)
-	for _, conn := range c.connections {
+	for _, conn := range c.conns {
 		conns = append(conns, conn)
 	}
 
@@ -97,50 +156,15 @@ func (c *Client) Connections() []*Connection {
 }
 
 func (c *Client) ConnectionCount() int64 {
-	return c.connectionsCount.Load()
-}
-
-func (c *Client) addConnection(conn *Connection) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.connections[conn.peer.Addr()] = conn
-}
-
-// removeConnection removes connections based on their peer.Addr().
-func (c *Client) removeConnection(addr string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	conn, ok := c.connections[addr]
-	if !ok {
-		return
-	}
-
-	conn.quitch <- struct{}{}
-	delete(c.connections, addr)
-}
-
-// clearConnections removes all entries from the connections map.
-func (c *Client) clearConnections() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for _, conn := range c.connections {
-		slog.Debug("Closing connection", "addr", conn.Addr())
-		conn.quitch <- struct{}{}
-		close(conn.quitch)
-		slog.Debug("Closed connection", "addr", conn.Addr())
-	}
-
-	clear(c.connections)
+	return c.connsCount.Load()
 }
 
 // HasConnection returns whether or not the current connection pool includes the provided connection (addr).
 func (c *Client) HasConnection(addr string) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.connsMu.RLock()
+	defer c.connsMu.RUnlock()
 
-	_, ok := c.connections[addr]
+	_, ok := c.conns[addr]
 	slog.Debug("has connection", "ok", ok, "addr", addr)
 	return ok
 }
@@ -152,6 +176,54 @@ func (c *Client) Close() error {
 	close(c.quitch)
 	c.clearConnections()
 	return nil
+}
+
+func (c *Client) PieceLengths() []int {
+	var (
+		info    = &c.t.File.Info
+		total   = bencode.Integer(0)
+		lengths = make([]int, 0, len(info.PieceHashes))
+	)
+	for range info.PieceHashes {
+		if total+info.PieceLength < info.Length {
+			lengths = append(lengths, int(info.PieceLength))
+			total += info.PieceLength
+		} else {
+			l := info.Length - total
+			lengths = append(lengths, int(l))
+			total += l
+		}
+	}
+	return lengths
+}
+
+func (c *Client) Pieces() []Piece {
+	lengths := c.PieceLengths()
+	pieces := make([]Piece, 0, len(lengths))
+
+	for i, l := range lengths {
+		chunks := make([]int, 0)
+		total := 0
+		for total != l {
+			if total+ChunkSize < l {
+				chunks = append(chunks, ChunkSize)
+				total += ChunkSize
+			} else {
+				l := l - total
+				chunks = append(chunks, l)
+				total += l
+			}
+		}
+
+		pieces = append(pieces, Piece{
+			Index:     uint32(i),
+			Chunks:    chunks,
+			TotalSize: total,
+			Hash:      c.t.File.Info.PieceHashes[i],
+		})
+	}
+
+	return pieces
 }
 
 // Announce sends the request to the tracker to get the latest announce message.
@@ -211,6 +283,41 @@ func (c *Client) DiscoverPeers(ctx context.Context) ([]bencode.Peer, error) {
 	return announce.Peers, nil
 }
 
+func (c *Client) addConnection(conn *Connection) {
+	c.connsMu.Lock()
+	defer c.connsMu.Unlock()
+	c.conns[conn.peer.Addr()] = conn
+}
+
+// removeConnection removes connections based on their peer.Addr().
+func (c *Client) removeConnection(addr string) {
+	c.connsMu.Lock()
+	defer c.connsMu.Unlock()
+
+	conn, ok := c.conns[addr]
+	if !ok {
+		return
+	}
+
+	conn.quitch <- struct{}{}
+	delete(c.conns, addr)
+}
+
+// clearConnections removes all entries from the connections map.
+func (c *Client) clearConnections() {
+	c.connsMu.Lock()
+	defer c.connsMu.Unlock()
+
+	for _, conn := range c.conns {
+		slog.Debug("Closing connection", "addr", conn.Addr())
+		conn.quitch <- struct{}{}
+		close(conn.quitch)
+		slog.Debug("Closed connection", "addr", conn.Addr())
+	}
+
+	clear(c.conns)
+}
+
 // startHandshake does the handshake with the peer (by calling sendHandshake) and adds the connection to the pool in the client.
 func (c *Client) startHandshake(peer bencode.Peer, infoHash [20]byte, peerID []byte) error {
 	addr := peer.Addr()
@@ -224,7 +331,6 @@ func (c *Client) startHandshake(peer bencode.Peer, infoHash [20]byte, peerID []b
 		quitch: make(chan struct{}),
 		peer:   peer,
 	}, infoHash, peerID); err != nil {
-		c.log.Error("Failed to handshake", "err", err, "addr", addr)
 		return err
 	}
 
@@ -256,84 +362,142 @@ func (c *Client) sendHandshake(conn *Connection, infoHash [20]byte, peerID []byt
 	return nil
 }
 
-// handleConnection is the main loop for handling the message exchange between clients.
+// handleConnection is the main loop for handling the command exchange between clients.
 func (c *Client) handleConnection(conn *Connection) {
-	c.connectionsCount.Add(1)
-	defer c.connectionsCount.Add(-1)
+	c.connsCount.Add(1)
+	defer c.connsCount.Add(-1)
 	defer conn.Close()
-	var (
-		lastMessage *Command
-		buffer      = make([]byte, 4096)
-	)
+
 	for {
 		select {
 		case <-conn.quitch:
 			return
-		default:
-			if lastMessage != nil {
-				if err := c.exchangeMessages(conn, lastMessage); err != nil {
-					c.log.Error("Error during message exchange", "err", err)
-				}
-			}
-
-			next, err := c.readNext(conn, buffer)
-			if err != nil {
-				c.log.Error("Error while reading the next message", "err", err)
-				lastMessage = nil
-
-				if errors.Is(err, io.EOF) || errors.Is(err, os.ErrDeadlineExceeded) {
-					slog.Debug("Connection removing itself")
-					go c.removeConnection(conn.Addr())
+		case piece := <-c.pieceQueue:
+			if err := c.tryDownloadPiece(conn, piece); err != nil {
+				if errors.Is(err, io.EOF) {
+					c.log.Info("Reached EOF, closing this connection")
+					go func() {
+						c.removeConnection(conn.Addr())
+					}()
 					continue
 				}
 
+				c.log.Error("Error downloading a piece", "err", err)
+
+				go func() {
+					slog.Info("Restarting the connection")
+					c.removeConnection(conn.Addr())
+					if err := c.startHandshake(conn.peer, c.t.File.InfoHashSum, c.peerID); err != nil {
+						slog.Error("Error restarting the connection", "err", err)
+					}
+					c.pieceQueue <- piece
+				}()
+
 				continue
 			}
-			lastMessage = next
 		}
 	}
 }
 
-// exchangeMessages acts accordingly to the receivedMessage MessageID.
-func (c *Client) exchangeMessages(conn *Connection, receivedMessage *Command) error {
-	slog.Info("Received a message", "msg", receivedMessage, "peer", conn.peer.Addr())
+// tryDownloadPiece tries to download the piece from the peer.
+// On success, the piece is written to the c.pieces.
+func (c *Client) tryDownloadPiece(conn *Connection, piece *Piece) error {
+	c.log.Debug("Connection starting to download a piece", "addr", conn.Addr(), "piece", piece)
+	var lastCommand *Command
+	for {
+		if lastCommand != nil {
+			if err := c.exchangeCommands(conn, lastCommand, piece); err != nil {
+				return err
+			}
+		}
+		if err := conn.SetReadDeadline(time.Now().Add(ReadDeadline)); err != nil {
+			return err
+		}
+		next, err := c.readNext(conn)
+		if err != nil {
+			return err
+		}
+		lastCommand = next
+	}
+}
+
+// exchangeCommands acts accordingly to the command MessageID.
+func (c *Client) exchangeCommands(conn *Connection, command *Command, piece *Piece) error {
 	if err := conn.SetWriteDeadline(time.Now().Add(WriteDeadline)); err != nil {
 		return err
 	}
-	switch receivedMessage.MessageID {
-	case Bitfield: // Send an Interested message
-		msg := &Command{Length: 2, MessageID: Interested, Payload: []byte{}}
-		if err := NewCommandEncoder(conn).Encode(msg); err != nil {
-			return err
-		}
-	case Unchoke:
+	switch command.MessageID {
+	case CommandBitfield: // Send an Interested command
+		return c.writecommand(conn, &Command{Length: 2, MessageID: CommandInterested, Payload: []byte{}})
+	case CommandUnchoke:
+		go func() {
+			offset := 0
+			for _, blockSize := range piece.Chunks {
+				payload := newUnchokePayload(piece.Index, uint32(offset), uint32(blockSize))
+				if err := c.writecommand(conn, &Command{
+					Length:    2 + uint32(len(payload)),
+					MessageID: CommandRequest,
+					Payload:   payload,
+				}); err != nil {
+					c.log.Error("Failed to send request command", "err", err)
+					return
+				}
+				offset += blockSize
+			}
+		}()
+	case CommandPiece:
+		c.piecesMu.Lock()
+		defer c.piecesMu.Unlock()
 
+		if _, ok := c.pieces[piece.Hash]; !ok {
+			c.pieces[piece.Hash] = make([]byte, piece.TotalSize)
+		}
+
+		pieceBuf := c.pieces[piece.Hash]
+
+		buf := command.Payload
+		index := binary.BigEndian.Uint32(buf)
+		buf = buf[4:]
+		begin := binary.BigEndian.Uint32(buf)
+		buf = buf[4:]
+		block := buf
+
+		copy(pieceBuf[begin:], block)
+
+		piece.DownloadedSize += len(block)
+		if piece.DownloadedSize == piece.TotalSize {
+			c.piecesCompleted.Add(1)
+			slog.Info("PIECE COMPLETED!")
+
+			return io.EOF
+		}
+		_ = index
 	default:
-		c.log.Debug("Unexpected message type", "type", receivedMessage.MessageID)
+		c.log.Debug("Unexpected command type", "type", command.MessageID)
 	}
 
 	return nil
 }
 
-// readNext is a helper for reading the next message from the connection.
-func (c *Client) readNext(conn net.Conn, buffer []byte) (*Command, error) {
-	if err := conn.SetReadDeadline(time.Now().Add(ReadDeadline)); err != nil {
-		return nil, err
-	}
+func (c *Client) writecommand(w io.Writer, command *Command) error {
+	c.log.Debug("Sending command", "command", command)
+	return NewCommandEncoder(w).Encode(command)
+}
 
-	n, err := conn.Read(buffer)
-	if err != nil {
-		return nil, err
-	}
-	buffer = buffer[:n]
-
-	r := bytes.NewReader(buffer)
-	msg, err := NewCommandDecoder(r).Decode()
+// readNext is a helper for reading the next command from the connection.
+func (c *Client) readNext(r io.Reader) (*Command, error) {
+	command, err := NewCommandDecoder(r).Decode()
 	if err != nil {
 		return nil, err
 	}
 
-	return msg, nil
+	if command == nil {
+		return nil, ErrNoCommand
+	}
+
+	c.log.Debug("Received command", "type", command.MessageID.String())
+
+	return command, nil
 }
 
 // refetchAnnounce refetches announce every interval * time.Second
@@ -391,18 +555,21 @@ func (c *Client) addMissingConnections(announce *bencode.AnnounceResponse) {
 			slog.Debug("Adding a missing peer", "peer", peer.Addr())
 			go func() {
 				if err := c.startHandshake(peer, c.t.File.InfoHashSum, c.peerID); err != nil {
-					slog.Error("Handshake error", "err", err, "peer", peer.Addr())
+					c.log.Error("Handshake error", "err", err, "peer", peer.Addr())
 				}
 			}()
 		}
 	}
 }
 
-// newUnchokePayload is a helper for creating a payload for the Unchoke message type.
-func (c *Client) newUnchokePayload(index, begin, length uint32) []byte {
-	buf := make([]byte, 0)
-	binary.BigEndian.PutUint32(buf, index)  // the zero-based piece index
-	binary.BigEndian.PutUint32(buf, begin)  // the zero-based byte offset within the piece
+// newUnchokePayload is a helper for creating a payload for the Unchoke command type.
+func newUnchokePayload(index, begin, length uint32) []byte {
+	total := make([]byte, 12)
+	buf := total
+	binary.BigEndian.PutUint32(buf, index) // the zero-based piece index
+	buf = buf[4:]
+	binary.BigEndian.PutUint32(buf, begin) // the zero-based byte offset within the piece
+	buf = buf[4:]
 	binary.BigEndian.PutUint32(buf, length) // the length of the block in bytes
-	return buf
+	return total
 }

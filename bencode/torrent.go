@@ -40,12 +40,12 @@ func NewTorrent(r io.Reader) (*Torrent, error) {
 		return nil, err
 	}
 
-	torrentFile, err := decodeTorrent(decoded)
+	torrent, err := decodeTorrent(decoded)
 	if err != nil {
 		return nil, err
 	}
 
-	return torrentFile, err
+	return torrent, err
 }
 
 func decodeTorrent(values any) (*Torrent, error) {

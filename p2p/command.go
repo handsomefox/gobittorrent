@@ -1,11 +1,14 @@
 package p2p
 
 import (
+	"bufio"
 	"bytes"
 	"encoding"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 var (
@@ -16,39 +19,39 @@ var (
 type MessageID byte
 
 const (
-	Choke MessageID = iota
-	Unchoke
-	Interested
-	NotInterested
-	Have
-	Bitfield
-	Request
-	Piece
-	Cancel
+	CommandChoke MessageID = iota
+	CommandUnchoke
+	CommandInterested
+	CommandNotInterested
+	CommandHave
+	CommandBitfield
+	CommandRequest
+	CommandPiece
+	CommandCancel
 )
 
 func (id MessageID) String() string {
 	switch id {
-	case Choke:
+	case CommandChoke:
 		return "Choke"
-	case Unchoke:
+	case CommandUnchoke:
 		return "Unchoke"
-	case Interested:
+	case CommandInterested:
 		return "Interested"
-	case NotInterested:
+	case CommandNotInterested:
 		return "NotInterested"
-	case Have:
+	case CommandHave:
 		return "Have"
-	case Bitfield:
+	case CommandBitfield:
 		return "Bitfield"
-	case Request:
+	case CommandRequest:
 		return "Request"
-	case Piece:
+	case CommandPiece:
 		return "Piece"
-	case Cancel:
+	case CommandCancel:
 		return "Cancel"
 	default:
-		return "Undefined"
+		return strconv.FormatUint(uint64(id), 10)
 	}
 }
 
@@ -67,14 +70,14 @@ func NewCommandDecoder(r io.Reader) *CommandDecoder { return &CommandDecoder{r: 
 
 func (cmd *Command) MarshalBinary() (data []byte, err error) {
 	buf := new(bytes.Buffer)
-	if err := NewCommandEncoder(buf).Encode(cmd); err != nil {
+	if err := NewCommandEncoder(bufio.NewWriter(buf)).Encode(cmd); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
 func (cmd *Command) UnmarshalBinary(data []byte) error {
-	r := bytes.NewReader(data)
+	r := bufio.NewReader(bytes.NewReader(data))
 	decoded, err := NewCommandDecoder(r).Decode()
 	if err != nil {
 		return err
@@ -111,36 +114,31 @@ func (enc CommandEncoder) Encode(cmd *Command) error {
 }
 
 func (dec CommandDecoder) Decode() (*Command, error) {
-	buffer := new(bytes.Buffer)
+	c := new(Command)
 
 	// First 4 bytes are the payload length
-	_, err := io.CopyN(buffer, dec.r, 4)
+	lengthBuffer := make([]byte, 4)
+	_, err := io.ReadFull(dec.r, lengthBuffer)
 	if err != nil {
 		return nil, err
 	}
-	length := binary.BigEndian.Uint32(buffer.Bytes())
+	c.Length = binary.BigEndian.Uint32(lengthBuffer) - 1
 
-	buffer.Reset()
-	// 1 byte for the message id
-	_, err = io.CopyN(buffer, dec.r, 1)
+	idBuffer := make([]byte, 1)
+	_, err = io.ReadFull(dec.r, idBuffer)
 	if err != nil {
 		return nil, err
 	}
-	messageID := MessageID(buffer.Bytes()[0])
+	c.MessageID = MessageID(idBuffer[0])
 
-	buffer.Reset()
-	// Everything else is the payload
-	var payload []byte
-	_, err = io.CopyN(buffer, dec.r, int64(length))
-	if err != nil {
-		payload = nil
-	} else {
-		payload = buffer.Bytes()
+	// Everything else is the payloadBuf
+	c.Payload = make([]byte, c.Length)
+	if c.Length > 0 {
+		_, err := io.ReadFull(dec.r, c.Payload)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, err
+		}
 	}
 
-	return &Command{
-		Length:    length,
-		MessageID: messageID,
-		Payload:   payload,
-	}, nil
+	return c, nil
 }

@@ -22,6 +22,7 @@ go.work
 
 # Binary
 bin/
+output.txt
 
 # Air
 tmp/

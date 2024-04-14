@@ -14,7 +14,7 @@ import (
 func main() {
 	log := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
 		AddSource:  true,
-		Level:      slog.LevelDebug,
+		Level:      slog.LevelInfo,
 		TimeFormat: time.Kitchen,
 	}))
 	slog.SetDefault(log)
@@ -29,6 +29,8 @@ func main() {
 		commands.RunCommand(commands.Info)
 	case "handshake":
 		commands.RunCommand2(commands.Handshake)
+	case "download":
+		commands.RunCommand2(commands.Download)
 	default:
 		fmt.Println(IncorrectUsage)
 	}
@@ -45,6 +47,8 @@ Commands:
     shows the decoded representation of the .torrent file
   handshake <.torrent file> <peer>
     does the handshake with the given peer, which is a string that looks like: "host:port"
+  download <.torrent file> <output file>
+    downloads a single-file torrent to the specified file
   help
     display this message
 
@@ -53,6 +57,7 @@ Usage:
   gobittorrent decode d3:foo3:bar5:helloi52ee
   gobittorrent peers sample.torrent
   gobittorrent info sample.torrent
-  gobittorrent handshake sample.torrent 1.1.1.1:1111`
+  gobittorrent handshake sample.torrent 1.1.1.1:1111
+  gobittorrent download sample.torrent ./output.txt`
 
 const IncorrectUsage = "Incorrect usage...\n" + Usage

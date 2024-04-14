@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
-	"time"
 
 	"github.com/handsomefox/gobittorrent/bencode"
 	"github.com/handsomefox/gobittorrent/p2p"
@@ -160,7 +160,7 @@ func Handshake(path, addr string) (string, error) {
 	}
 
 	for !client.HasConnection(peer.Addr()) {
-		time.Sleep(1 * time.Second)
+		runtime.Gosched()
 	}
 
 	conns := client.Connections()
@@ -173,4 +173,35 @@ func Handshake(path, addr string) (string, error) {
 	}
 
 	return "Peer ID: " + id, nil
+}
+
+func Download(torrentPath, outputPath string) (string, error) {
+	torrentFile, err := os.Open(torrentPath)
+	if err != nil {
+		return "", err
+	}
+	defer torrentFile.Close()
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return "", err
+	}
+	defer outputFile.Close()
+
+	torrent, err := bencode.NewTorrent(torrentFile)
+	if err != nil {
+		return "", err
+	}
+
+	client, err := p2p.NewClient(slog.Default(), []byte("00112233445566778899"), torrent)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	if err := client.Download(outputFile); err != nil {
+		return "", err
+	}
+
+	return "Downloaded " + torrentPath + " to " + outputPath, nil
 }
