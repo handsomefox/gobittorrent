@@ -6,9 +6,9 @@ This is a command-line program that can:
 - [x] Decode torrent files
 - [x] Decode announce messages
 - [x] Show the available peers
-- [x] Do the handshake with the peer
-- [x] Exchange messages with the peer _(partially)_
-- [ ] Download (single-file) torrent files
+- [x] Do the handshake with multiple peers
+- [x] Exchange messages with multiple peers _(partially)_
+- [ ] Download (single-file) files
 
 ## How to use
 
