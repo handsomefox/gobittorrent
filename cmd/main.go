@@ -5,14 +5,17 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/handsomefox/gobittorrent/cmd/commands"
+	"github.com/lmittmann/tint"
 )
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		AddSource: true,
-		Level:     slog.LevelInfo,
+	log := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+		AddSource:  true,
+		Level:      slog.LevelDebug,
+		TimeFormat: time.Kitchen,
 	}))
 	slog.SetDefault(log)
 	switch command := strings.ToLower(os.Args[1]); command {

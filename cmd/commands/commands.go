@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/handsomefox/gobittorrent/bencode"
 	"github.com/handsomefox/gobittorrent/p2p"
@@ -158,5 +159,18 @@ func Handshake(path, addr string) (string, error) {
 		return "", ErrPeerNotFound
 	}
 
-	return "Peer ID: " + client.PeerID(), nil
+	for !client.HasConnection(peer.Addr()) {
+		time.Sleep(1 * time.Second)
+	}
+
+	conns := client.Connections()
+
+	id := "not found"
+	for _, conn := range conns {
+		if conn.Addr() == peer.Addr() {
+			id = conn.PeerID()
+		}
+	}
+
+	return "Peer ID: " + id, nil
 }

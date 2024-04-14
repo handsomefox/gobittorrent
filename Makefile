@@ -13,7 +13,7 @@ vet: fmt
 .PHONY:vet
 
 test: vet
-	go test -v ./...
+	go test -v -race ./...
 .PHONY: test
 
 build: lint test
@@ -37,5 +37,9 @@ info: build
 .PHONY:info
 
 handshake: build
-	./bin/gobittorrent handshake sample.torrent 178.62.82.89:51448
+	./bin/gobittorrent handshake sample.torrent 165.232.33.77:51467
 .PHONY:handshake
+
+run_handshake: lint test
+	go run -race ./cmd/main.go handshake sample.torrent 165.232.33.77:51467
+.PHONY:run_handshake
