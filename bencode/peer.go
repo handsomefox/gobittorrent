@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"strconv"
 )
 
 type Peer struct {
@@ -26,7 +25,11 @@ func NewPeer(data []byte) (Peer, error) {
 }
 
 func (p Peer) Addr() string {
-	return p.IP.String() + ":" + strconv.FormatUint(uint64(p.Port), 10)
+	return p.String()
+}
+
+func (p Peer) String() string {
+	return fmt.Sprintf("%s:%d", p.IP.String(), p.Port)
 }
 
 func (p Peer) Empty() bool {

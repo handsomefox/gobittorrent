@@ -89,12 +89,10 @@ func decodeTorrent(values any) (*Torrent, error) {
 		return nil, fmt.Errorf("%w, because: %w", ErrBencodeInfoHash, err)
 	}
 
-	sum := sha1.Sum([]byte(encoded))
-
 	torrent.File = File{
 		Announce:    announce,
 		CreatedBy:   createdBy,
-		InfoHashSum: sum,
+		InfoHashSum: sha1.Sum(encoded),
 		Info: Info{
 			Length:      length,
 			Name:        name,

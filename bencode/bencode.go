@@ -1,21 +1,22 @@
 package bencode
 
 import (
+	"bufio"
+	"bytes"
 	"io"
 	"sort"
 	"strconv"
-	"strings"
 )
 
 type (
 	Decoder struct {
-		r io.Reader
+		r *bufio.Reader
 	}
 	Encoder struct {
 		w io.Writer
 	}
 	Bencodable interface {
-		Encode() (string, error)
+		Encode() ([]byte, error)
 	}
 	Integer    int64
 	String     string
@@ -23,167 +24,173 @@ type (
 	Dictionary map[String]Bencodable
 )
 
-func NewDecoder(r io.Reader) *Decoder { return &Decoder{r: r} }
-func NewEncoder(w io.Writer) *Encoder { return &Encoder{w: w} }
+func NewDecoder(r io.Reader) *Decoder {
+	return &Decoder{r: bufio.NewReader(r)}
+}
+
+func NewEncoder(w io.Writer) *Encoder {
+	return &Encoder{w: w}
+}
 
 func (enc *Encoder) Encode(v Bencodable) error {
-	s, err := v.Encode()
+	b, err := v.Encode()
 	if err != nil {
 		return err
 	}
-	_, err = enc.w.Write([]byte(s))
+	_, err = enc.w.Write(b)
 	return err
 }
 
 func (dec *Decoder) Decode() (Bencodable, error) {
-	data, err := io.ReadAll(dec.r)
+	return dec.decodeNext()
+}
+
+func (dec *Decoder) decodeNext() (Bencodable, error) {
+	b, err := dec.r.Peek(1)
 	if err != nil {
 		return nil, err
 	}
 
-	decoded, _, err := decode(string(data))
-
-	return decoded, err
-}
-
-func decode(encodedValue string) (decoded Bencodable, rest string, err error) {
-	if len(encodedValue) < 1 {
-		return nil, "", NewSyntaxError("bencode: length of the value is 0")
-	}
-
-	switch firstCh := encodedValue[0]; firstCh {
-	// An integer looks like: 'i52e'
+	switch b[0] {
 	case 'i':
-		return DecodeInteger(encodedValue)
-	// A string looks like: '5:hello'
-	case '1', '2', '3', '4', '5', '6', '7', '8', '9', '0':
-		return DecodeString(encodedValue)
-	// A list looks like: 'l5:helloi52ee'
+		return dec.decodeInteger()
 	case 'l':
-		return DecodeList(encodedValue)
+		return dec.decodeList()
 	case 'd':
-		return DecodeDictionary(encodedValue)
+		return dec.decodeDictionary()
+	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		return dec.decodeString()
+	default:
+		return nil, ErrUnknownValueType
 	}
-
-	return nil, "", ErrUnknownValueType
 }
 
-func DecodeInteger(input string) (i Integer, rest string, err error) {
-	encodedInteger := input
-
-	end := strings.Index(encodedInteger, "e")
-	if end == -1 {
-		return 0, "",
-			NewSyntaxErrorf("bencode: failed to find 'e' when decoding an integer value (%q)\n", encodedInteger)
-	}
-
-	encodedInteger = encodedInteger[1:]
-	encodedInteger = encodedInteger[:end-1]
-
-	integer, err := strconv.ParseInt(encodedInteger, 10, 32)
+func (dec *Decoder) decodeInteger() (Integer, error) {
+	_, err := dec.r.ReadByte() // consume 'i'
 	if err != nil {
-		return 0, "", NewSyntaxErrorf("bencode: the provided value (%q) was encoded like an integer, but was not an integer, error: %s\n", input, err)
+		return 0, err
 	}
 
-	return Integer(integer), input[end+1:], nil
-}
-
-func DecodeString(input string) (str String, rest string, err error) {
-	split := strings.SplitN(input, ":", 2)
-	if len(split) < 2 {
-		return "", "", NewSyntaxErrorf("bencode: failed to find ':' while decoding value (%q)\n", input)
-	}
-
-	lengthStr, rest := split[0], split[1]
-	length, err := strconv.ParseInt(lengthStr, 10, 32)
-	if err != nil {
-		return "", "", NewSyntaxErrorf("bencode: failed to decode the length value (%q), error: %s\n", lengthStr, err)
-	}
-
-	return String(rest[:length]), rest[length:], nil
-}
-
-func DecodeList(input string) (list List, rest string, err error) {
-	listValues := input[1:] // remove the 'l'
-	list = make(List, 0)
-
+	var buf bytes.Buffer
 	for {
-		decoded, rest, err := decode(listValues)
+		b, err := dec.r.ReadByte()
 		if err != nil {
-			return nil, "", err
+			return 0, err
 		}
-		list = append(list, decoded)
-
-		if strings.HasPrefix(rest, "e") {
-			rest = rest[1:]
-
-			return list, rest, nil
+		if b == 'e' {
+			break
 		}
-
-		if rest == "" {
-			return nil, "", NewSyntaxErrorf("bencode: failed to decode the list (%q), because it is not properly terminated\n", input)
-		}
-
-		listValues = rest
+		buf.WriteByte(b)
 	}
-}
 
-func DecodeDictionary(input string) (dict Dictionary, rest string, err error) {
-	// Just replace d with an l and decode the list instead, then transform into a map :)
-	input = input[1:]
-	input = "l" + input
-
-	list, rest, err := DecodeList(input)
+	i, err := strconv.ParseInt(buf.String(), 10, 64)
 	if err != nil {
-		return nil, rest, err
+		return 0, err
 	}
-
-	if len(list)%2 != 0 {
-		return nil, rest, NewSyntaxErrorf("bencode: incorrect amount of items for a map (%d)\n", len(list))
-	}
-
-	dict = make(Dictionary)
-
-	for i := 1; i < len(list); i += 2 {
-		key, value := list[i-1], list[i]
-		keyStr, ok := key.(String)
-		if !ok {
-			return nil, "", NewSyntaxErrorf("bencode: failed to decode a map key (%q), it supposed to be a byte slice", key)
-		}
-
-		dict[keyStr] = value
-	}
-
-	return dict, rest, nil
+	return Integer(i), nil
 }
 
-func (i Integer) Encode() (string, error) {
-	return "i" + strconv.FormatInt(int64(i), 10) + "e", nil
-}
-
-func (str String) Encode() (string, error) {
-	s := string(str)
-	return strconv.FormatInt(int64(len(s)), 10) + ":" + s, nil
-}
-
-func (list List) Encode() (string, error) {
-	s := "l"
-
-	for _, item := range list {
-		str, err := item.Encode()
+func (dec *Decoder) decodeString() (String, error) {
+	var length int64
+	for {
+		b, err := dec.r.ReadByte()
 		if err != nil {
 			return "", err
 		}
-		s += str
+		if b == ':' {
+			break
+		}
+		length = length*10 + int64(b-'0')
 	}
 
-	return s + "e", nil
+	buf := make([]byte, length)
+	_, err := io.ReadFull(dec.r, buf)
+	if err != nil {
+		return "", err
+	}
+	return String(buf), nil
 }
 
-func (dict Dictionary) Encode() (string, error) {
-	keys := make([]String, 0, len(dict))
+func (dec *Decoder) decodeList() (List, error) {
+	_, err := dec.r.ReadByte() // consume 'l'
+	if err != nil {
+		return nil, err
+	}
 
-	for k := range dict {
+	var list List
+	for {
+		b, err := dec.r.Peek(1)
+		if err != nil {
+			return nil, err
+		}
+		if b[0] == 'e' {
+			dec.r.ReadByte() // consume 'e'
+			return list, nil
+		}
+		item, err := dec.decodeNext()
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, item)
+	}
+}
+
+func (dec *Decoder) decodeDictionary() (Dictionary, error) {
+	_, err := dec.r.ReadByte() // consume 'd'
+	if err != nil {
+		return nil, err
+	}
+
+	dict := make(Dictionary)
+	for {
+		b, err := dec.r.Peek(1)
+		if err != nil {
+			return nil, err
+		}
+		if b[0] == 'e' {
+			dec.r.ReadByte() // consume 'e'
+			return dict, nil
+		}
+		key, err := dec.decodeString()
+		if err != nil {
+			return nil, err
+		}
+		value, err := dec.decodeNext()
+		if err != nil {
+			return nil, err
+		}
+		dict[key] = value
+	}
+}
+
+func (i Integer) Encode() ([]byte, error) {
+	return []byte("i" + strconv.FormatInt(int64(i), 10) + "e"), nil
+}
+
+func (s String) Encode() ([]byte, error) {
+	return []byte(strconv.Itoa(len(s)) + ":" + string(s)), nil
+}
+
+func (l List) Encode() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('l')
+	for _, item := range l {
+		b, err := item.Encode()
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(b)
+	}
+	buf.WriteByte('e')
+	return buf.Bytes(), nil
+}
+
+func (d Dictionary) Encode() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('d')
+
+	keys := make([]String, 0, len(d))
+	for k := range d {
 		keys = append(keys, k)
 	}
 
@@ -191,19 +198,19 @@ func (dict Dictionary) Encode() (string, error) {
 		return string(keys[i]) < string(keys[j])
 	})
 
-	s := "d"
-
 	for _, k := range keys {
-		key, err := k.Encode()
+		kb, err := k.Encode()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		value, err := dict[k].Encode()
-		if err != nil {
-			return "", err
-		}
-		s += key + value
-	}
+		buf.Write(kb)
 
-	return s + "e", nil
+		vb, err := d[k].Encode()
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(vb)
+	}
+	buf.WriteByte('e')
+	return buf.Bytes(), nil
 }

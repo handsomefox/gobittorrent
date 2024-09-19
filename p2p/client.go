@@ -23,8 +23,8 @@ const (
 	ChunkSize = 16 * 1024
 
 	HandshakeMessageLength               = 68
-	ReadDeadline           time.Duration = time.Second * 3
-	WriteDeadline          time.Duration = time.Second * 3
+	ReadDeadline           time.Duration = time.Second * 10
+	WriteDeadline          time.Duration = time.Second * 10
 )
 
 type Piece struct {
